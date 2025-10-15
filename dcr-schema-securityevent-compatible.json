@@ -1,0 +1,408 @@
+{
+  "properties": {
+    "description": "SecurityEvent テーブル互換 DCR スキーマ - 完全版",
+    "dataSources": {},
+    "destinations": {
+      "logAnalytics": [
+        {
+          "workspaceResourceId": "/subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.OperationalInsights/workspaces/{workspace-name}",
+          "name": "SecurityEventsWorkspace"
+        }
+      ]
+    },
+    "dataFlows": [
+      {
+        "streams": [
+          "Custom-SecurityEvent"
+        ],
+        "destinations": [
+          "SecurityEventsWorkspace"
+        ],
+        "transformKql": "source",
+        "outputStream": "Custom-SecurityEvents_CL"
+      }
+    ],
+    "streamDeclarations": {
+      "Custom-SecurityEvent": {
+        "columns": [
+          {
+            "name": "TimeGenerated",
+            "type": "datetime"
+          },
+          {
+            "name": "Computer",
+            "type": "string"
+          },
+          {
+            "name": "EventID",
+            "type": "int"
+          },
+          {
+            "name": "Level",
+            "type": "string"
+          },
+          {
+            "name": "LevelDisplayName",
+            "type": "string"
+          },
+          {
+            "name": "EventLevelName",
+            "type": "string"
+          },
+          {
+            "name": "EventSourceName",
+            "type": "string"
+          },
+          {
+            "name": "Task",
+            "type": "int"
+          },
+          {
+            "name": "TaskDisplayName",
+            "type": "string"
+          },
+          {
+            "name": "Opcode",
+            "type": "string"
+          },
+          {
+            "name": "OpcodeDisplayName",
+            "type": "string"
+          },
+          {
+            "name": "Keywords",
+            "type": "string"
+          },
+          {
+            "name": "KeywordDisplayNames",
+            "type": "string"
+          },
+          {
+            "name": "Channel",
+            "type": "string"
+          },
+          {
+            "name": "Provider",
+            "type": "string"
+          },
+          {
+            "name": "Version",
+            "type": "int"
+          },
+          {
+            "name": "ProcessId",
+            "type": "int"
+          },
+          {
+            "name": "ThreadId",
+            "type": "int"
+          },
+          {
+            "name": "ProcessName",
+            "type": "string"
+          },
+          {
+            "name": "Account",
+            "type": "string"
+          },
+          {
+            "name": "AccountType",
+            "type": "string"
+          },
+          {
+            "name": "AccountName",
+            "type": "string"
+          },
+          {
+            "name": "AccountDomain",
+            "type": "string"
+          },
+          {
+            "name": "LogonType",
+            "type": "int"
+          },
+          {
+            "name": "LogonTypeName",
+            "type": "string"
+          },
+          {
+            "name": "LogonProcessName",
+            "type": "string"
+          },
+          {
+            "name": "AuthenticationPackageName",
+            "type": "string"
+          },
+          {
+            "name": "WorkstationName",
+            "type": "string"
+          },
+          {
+            "name": "LogonGuid",
+            "type": "string"
+          },
+          {
+            "name": "TargetUserSid",
+            "type": "string"
+          },
+          {
+            "name": "TargetUserName",
+            "type": "string"
+          },
+          {
+            "name": "TargetDomainName",
+            "type": "string"
+          },
+          {
+            "name": "TargetLogonId",
+            "type": "string"
+          },
+          {
+            "name": "TargetLogonGuid",
+            "type": "string"
+          },
+          {
+            "name": "TargetServerName",
+            "type": "string"
+          },
+          {
+            "name": "TargetInfo",
+            "type": "string"
+          },
+          {
+            "name": "SubjectUserSid",
+            "type": "string"
+          },
+          {
+            "name": "SubjectUserName",
+            "type": "string"
+          },
+          {
+            "name": "SubjectDomainName",
+            "type": "string"
+          },
+          {
+            "name": "SubjectLogonId",
+            "type": "string"
+          },
+          {
+            "name": "SubjectAccount",
+            "type": "string"
+          },
+          {
+            "name": "TargetAccount",
+            "type": "string"
+          },
+          {
+            "name": "NewProcessId",
+            "type": "string"
+          },
+          {
+            "name": "NewProcessName",
+            "type": "string"
+          },
+          {
+            "name": "ParentProcessName",
+            "type": "string"
+          },
+          {
+            "name": "CommandLine",
+            "type": "string"
+          },
+          {
+            "name": "TokenElevationType",
+            "type": "string"
+          },
+          {
+            "name": "MandatoryLabel",
+            "type": "string"
+          },
+          {
+            "name": "ObjectServer",
+            "type": "string"
+          },
+          {
+            "name": "ObjectType",
+            "type": "string"
+          },
+          {
+            "name": "ObjectName",
+            "type": "string"
+          },
+          {
+            "name": "HandleId",
+            "type": "string"
+          },
+          {
+            "name": "AccessMask",
+            "type": "string"
+          },
+          {
+            "name": "PrivilegeList",
+            "type": "string"
+          },
+          {
+            "name": "Properties",
+            "type": "string"
+          },
+          {
+            "name": "AccessList",
+            "type": "string"
+          },
+          {
+            "name": "AccessReason",
+            "type": "string"
+          },
+          {
+            "name": "ResourceAttributes",
+            "type": "string"
+          },
+          {
+            "name": "IpAddress",
+            "type": "string"
+          },
+          {
+            "name": "IpPort",
+            "type": "string"
+          },
+          {
+            "name": "SourceNetworkAddress",
+            "type": "string"
+          },
+          {
+            "name": "SourcePort",
+            "type": "string"
+          },
+          {
+            "name": "Status",
+            "type": "string"
+          },
+          {
+            "name": "SubStatus",
+            "type": "string"
+          },
+          {
+            "name": "FailureReason",
+            "type": "string"
+          },
+          {
+            "name": "ErrorCode",
+            "type": "string"
+          },
+          {
+            "name": "TransmittedServices",
+            "type": "string"
+          },
+          {
+            "name": "LmPackageName",
+            "type": "string"
+          },
+          {
+            "name": "KeyLength",
+            "type": "int"
+          },
+          {
+            "name": "PackageName",
+            "type": "string"
+          },
+          {
+            "name": "CertIssuerName",
+            "type": "string"
+          },
+          {
+            "name": "CertSerialNumber",
+            "type": "string"
+          },
+          {
+            "name": "CertThumbprint",
+            "type": "string"
+          },
+          {
+            "name": "ServiceName",
+            "type": "string"
+          },
+          {
+            "name": "ServiceFileName",
+            "type": "string"
+          },
+          {
+            "name": "ClientAddress",
+            "type": "string"
+          },
+          {
+            "name": "ClientName",
+            "type": "string"
+          },
+          {
+            "name": "SessionName",
+            "type": "string"
+          },
+          {
+            "name": "GroupMembership",
+            "type": "string"
+          },
+          {
+            "name": "RelativeTargetName",
+            "type": "string"
+          },
+          {
+            "name": "RestrictedAdminMode",
+            "type": "string"
+          },
+          {
+            "name": "VirtualAccount",
+            "type": "string"
+          },
+          {
+            "name": "ElevatedToken",
+            "type": "string"
+          },
+          {
+            "name": "ImpersonationLevel",
+            "type": "string"
+          },
+          {
+            "name": "NewValue",
+            "type": "string"
+          },
+          {
+            "name": "OldValue",
+            "type": "string"
+          },
+          {
+            "name": "EventRecordId",
+            "type": "long"
+          },
+          {
+            "name": "ActivityId",
+            "type": "string"
+          },
+          {
+            "name": "EventData",
+            "type": "string"
+          },
+          {
+            "name": "SourceSystem",
+            "type": "string"
+          },
+          {
+            "name": "Activity",
+            "type": "string"
+          },
+          {
+            "name": "Type",
+            "type": "string"
+          },
+          {
+            "name": "ManagementGroupName",
+            "type": "string"
+          },
+          {
+            "name": "SourceComputerId",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  }
+}
