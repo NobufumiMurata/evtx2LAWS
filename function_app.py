@@ -10,6 +10,19 @@ from Evtx.Views import evtx_file_xml_view
 from azure.monitor.ingestion import LogsIngestionClient
 from azure.identity import DefaultAzureCredential, ClientSecretCredential, ChainedTokenCredential
 
+CONFIG_DIR = os.path.join(os.path.dirname(__file__), 'config')
+EVENT_DESCRIPTION_FILE = os.path.join(CONFIG_DIR, 'event_descriptions.json')
+
+try:
+    with open(EVENT_DESCRIPTION_FILE, 'r', encoding='utf-8') as desc_file:
+        EVENT_DESCRIPTIONS = json.load(desc_file)
+except FileNotFoundError:
+    logging.warning("event_descriptions.json not found; defaulting to empty descriptions map")
+    EVENT_DESCRIPTIONS = {}
+except json.JSONDecodeError:
+    logging.warning("event_descriptions.json is not valid JSON; defaulting to empty descriptions map")
+    EVENT_DESCRIPTIONS = {}
+
 # Azure Functions アプリケーション
 app = func.FunctionApp()
 
@@ -111,7 +124,9 @@ def get_event_level_name(level):
         4: 'Information',
         5: 'Verbose'
     }
-    return level_names.get(level, 'Information')
+    if level is None:
+        return ''
+    return level_names.get(level, '')
 
 def get_logon_type_name(logon_type):
     """ログオンタイプの数値を名前に変換"""
@@ -127,66 +142,19 @@ def get_logon_type_name(logon_type):
         10: 'RemoteInteractive',
         11: 'CachedInteractive'
     }
-    return logon_type_names.get(logon_type, 'Unknown')
+    if logon_type is None:
+        return ''
+    return logon_type_names.get(logon_type, '')
 
 def get_event_description(event_id):
-    """EventIDに基づく説明を生成（実データで検出されたイベント優先対応）"""
-    descriptions = {
-        # 実データで検出されたEventID（優先）
-        '4946': 'A change has been made to Windows Firewall exception list',
-        '4948': 'A change has been made to Windows Firewall exception list',
-        '4957': 'Windows Firewall did not apply the following rule',
-        '4670': 'Permissions on an object were changed',
-        '4702': 'A scheduled task was updated',
-        '5379': 'Credential Manager credentials were read',
-        
-        # 一般的なセキュリティイベント
-        '4624': 'An account was successfully logged on',
-        '4625': 'An account failed to log on',
-        '4634': 'An account was logged off',
-        '4647': 'User initiated logoff',
-        '4648': 'A logon was attempted using explicit credentials',
-        '4662': 'An operation was performed on an object',
-        '4672': 'Special privileges assigned to new logon',
-        '4673': 'A privileged service was called',
-        '4688': 'A new process has been created',
-        '4689': 'A process has exited',
-        '4698': 'A scheduled task was created',
-        '4699': 'A scheduled task was deleted',
-        '4700': 'A scheduled task was enabled',
-        '4701': 'A scheduled task was disabled',
-        '4720': 'A user account was created',
-        '4722': 'A user account was enabled',
-        '4723': 'An attempt was made to change an account password',
-        '4724': 'An attempt was made to reset an account password',
-        '4725': 'A user account was disabled',
-        '4726': 'A user account was deleted',
-        '4727': 'A security-enabled global group was created',
-        '4728': 'A member was added to a security-enabled global group',
-        '4729': 'A member was removed from a security-enabled global group',
-        '4730': 'A security-enabled global group was deleted',
-        '4731': 'A security-enabled local group was created',
-        '4732': 'A member was added to a security-enabled local group',
-        '4733': 'A member was removed from a security-enabled local group',
-        '4734': 'A security-enabled local group was deleted',
-        '4735': 'A security-enabled local group was changed',
-        '4738': 'A user account was changed',
-        '4740': 'A user account was locked out',
-        '4767': 'A user account was unlocked',
-        '4768': 'A Kerberos authentication ticket (TGT) was requested',
-        '4769': 'A Kerberos service ticket was requested',
-        '4770': 'A Kerberos service ticket was renewed',
-        '4771': 'Kerberos pre-authentication failed',
-        '4776': 'The computer attempted to validate the credentials for an account',
-        '4778': 'A session was reconnected to a Window Station',
-        '4779': 'A session was disconnected from a Window Station',
-        '4781': 'The name of an account was changed',
-        '4798': 'A user\'s local group membership was enumerated',
-        '4799': 'A security-enabled local group membership was enumerated',
-        '5156': 'The Windows Filtering Platform has allowed a connection',
-        '5157': 'The Windows Filtering Platform has blocked a connection'
-    }
-    return descriptions.get(event_id, f'Event ID {event_id} occurred')
+    """EventIDに基づく説明を取得"""
+    if not event_id:
+        return ''
+    event_id_str = str(event_id)
+    description = EVENT_DESCRIPTIONS.get(event_id_str)
+    if description:
+        return description
+    return f'Event ID {event_id_str} occurred'
 
 def parse_event_xml(xml_string):
     """
@@ -210,52 +178,65 @@ def parse_event_xml(xml_string):
         if system is None:
             return None
         
+        def text_or_blank(element):
+            if element is None or element.text is None:
+                return ''
+            return element.text.strip()
+
         # 基本的なイベント情報を抽出
-        event_id = system.find('Event:EventID', ns).text if system.find('Event:EventID', ns) is not None else None
+        event_id_text = text_or_blank(system.find('Event:EventID', ns))
+        event_id_value = int(event_id_text) if event_id_text.isdigit() else None
         time_created = system.find('Event:TimeCreated', ns)
         system_time = time_created.get('SystemTime') if time_created is not None else datetime.utcnow().isoformat() + 'Z'
-        computer = system.find('Event:Computer', ns).text if system.find('Event:Computer', ns) is not None else 'Unknown'
-        level = system.find('Event:Level', ns).text if system.find('Event:Level', ns) is not None else '4'
-        
+        computer = text_or_blank(system.find('Event:Computer', ns))
+        level_text = text_or_blank(system.find('Event:Level', ns))
+        level_value = int(level_text) if level_text.isdigit() else None
+
         # プロバイダー情報を取得
         provider = system.find('Event:Provider', ns)
-        event_source_name = provider.get('Name') if provider is not None else 'Unknown'
-        provider_guid = provider.get('Guid') if provider is not None else '{00000000-0000-0000-0000-000000000000}'
-        
+        provider_name = provider.get('Name') if provider is not None else ''
+        event_source_name = provider_name.strip() if provider_name else ''
+
         # Execution情報を取得
         execution = system.find('Event:Execution', ns)
-        process_id = execution.get('ProcessID') if execution is not None else '0'
-        thread_id = execution.get('ThreadID') if execution is not None else '0'
-        
+        process_id_attr = execution.get('ProcessID') if execution is not None else None
+        thread_id_attr = execution.get('ThreadID') if execution is not None else None
+        process_id_text = process_id_attr.strip() if process_id_attr else ''
+        thread_id_text = thread_id_attr.strip() if thread_id_attr else ''
+        thread_id_value = int(thread_id_text) if thread_id_text.isdigit() else None
+
         # その他システム情報
-        channel = system.find('Event:Channel', ns).text if system.find('Event:Channel', ns) is not None else 'Security'
-        task = system.find('Event:Task', ns).text if system.find('Event:Task', ns) is not None else '0'
-        opcode = system.find('Event:Opcode', ns).text if system.find('Event:Opcode', ns) is not None else '0'
-        keywords = system.find('Event:Keywords', ns).text if system.find('Event:Keywords', ns) is not None else '0x0'
-        version = system.find('Event:Version', ns).text if system.find('Event:Version', ns) is not None else '0'
-        event_record_id = system.find('Event:EventRecordID', ns).text if system.find('Event:EventRecordID', ns) is not None else '0'
+        channel = text_or_blank(system.find('Event:Channel', ns))
+        task_text = text_or_blank(system.find('Event:Task', ns))
+        task_value = int(task_text) if task_text.isdigit() else None
+        opcode = text_or_blank(system.find('Event:Opcode', ns))
+        keywords = text_or_blank(system.find('Event:Keywords', ns))
+        version_text = text_or_blank(system.find('Event:Version', ns))
+        version_value = int(version_text) if version_text.isdigit() else None
+        event_record_id_text = text_or_blank(system.find('Event:EventRecordID', ns))
+        correlation = system.find('Event:Correlation', ns)
         
         # SecurityEvent互換の完全なデータ構造（90+フィールド）
         securityevent_compatible_data = {
             # === 基本フィールド ===
             'TimeGenerated': system_time,
             'Computer': computer,
-            'EventID': int(event_id) if event_id and event_id.isdigit() else 0,
-            'Level': level if level else '4',
-            'LevelDisplayName': get_event_level_name(int(level) if level.isdigit() else 4),
-            'EventLevelName': get_event_level_name(int(level) if level.isdigit() else 4),
+            'EventID': event_id_value,
+            'Level': level_value,
+            'LevelDisplayName': get_event_level_name(level_value),
+            'EventLevelName': get_event_level_name(level_value),
             'EventSourceName': event_source_name,
-            'Task': int(task) if task.isdigit() else 0,
-            'TaskDisplayName': f'Task {task}' if task else 'Unknown Task',
-            'Opcode': opcode if opcode else '0',
-            'OpcodeDisplayName': f'Opcode {opcode}' if opcode else 'Info',
+            'Task': task_value,
+            'TaskDisplayName': '',
+            'Opcode': opcode,
+            'OpcodeDisplayName': '',
             'Keywords': keywords,
-            'KeywordDisplayNames': 'Audit Success' if '0x8020000000000000' in keywords else 'Unknown',
+            'KeywordDisplayNames': '',
             'Channel': channel,
             'Provider': event_source_name,
-            'Version': int(version) if version.isdigit() else 0,
-            'ProcessId': int(process_id) if process_id.isdigit() else 0,
-            'ThreadId': int(thread_id) if thread_id.isdigit() else 0,
+            'Version': version_value,
+            'ProcessId': process_id_text,
+            'ThreadId': thread_id_value,
             
             # === プロセス関連 ===
             'ProcessName': '',  # 後で更新
@@ -268,39 +249,39 @@ def parse_event_xml(xml_string):
             
             # === アカウント・認証関連 ===
             'Account': '',  # 後で更新
-            'AccountType': 'User',
+            'AccountType': '',
             'AccountName': '',  # 後で更新
             'AccountDomain': '',  # 後で更新
-            'LogonType': 0,
-            'LogonTypeName': 'Unknown',
+            'LogonType': None,
+            'LogonTypeName': '',
             'LogonProcessName': '',  # 後で更新
             'AuthenticationPackageName': '',  # 後で更新
             'WorkstationName': '',  # 後で更新
-            'LogonGuid': '{00000000-0000-0000-0000-000000000000}',
+            'LogonGuid': '',
             
             # === Target情報 ===
-            'TargetUserSid': 'S-1-0-0',
+            'TargetUserSid': '',
             'TargetUserName': '',
             'TargetDomainName': '',
-            'TargetLogonId': '0x0',
-            'TargetLogonGuid': '{00000000-0000-0000-0000-000000000000}',
+            'TargetLogonId': '',
+            'TargetLogonGuid': '',
             'TargetServerName': '',
             'TargetInfo': '',
             'TargetAccount': '',
             
             # === Subject情報 ===
-            'SubjectUserSid': 'S-1-0-0',
+            'SubjectUserSid': '',
             'SubjectUserName': '',
             'SubjectDomainName': '',
-            'SubjectLogonId': '0x0',
+            'SubjectLogonId': '',
             'SubjectAccount': '',
             
             # === オブジェクト・セキュリティ関連 ===
             'ObjectServer': '',
             'ObjectType': '',
             'ObjectName': '',
-            'HandleId': '0x0',
-            'AccessMask': '0x0',
+            'HandleId': '',
+            'AccessMask': '',
             'PrivilegeList': '',
             'Properties': '',
             'AccessList': '',
@@ -319,12 +300,12 @@ def parse_event_xml(xml_string):
             'Status': '',
             'SubStatus': '',
             'FailureReason': '',
-            'ErrorCode': '',
+            'ErrorCode': None,
             
             # === 認証プロトコル関連 ===
             'TransmittedServices': '',
             'LmPackageName': '',
-            'KeyLength': 0,
+            'KeyLength': None,
             'PackageName': '',
             
             # === 証明書関連 ===
@@ -352,15 +333,26 @@ def parse_event_xml(xml_string):
             'OldValue': '',
             
             # === メタデータ ===
-            'EventRecordId': int(event_record_id) if event_record_id.isdigit() else 0,
-            'ActivityId': '{00000000-0000-0000-0000-000000000000}',
+            'EventRecordId': event_record_id_text,
+            'ActivityId': '',
             'EventData': xml_string,
             'SourceSystem': 'Azure Functions EVTX Parser (SecurityEvent Compatible)',
-            'Activity': f'{event_id} - {get_event_description(event_id)}' if event_id else 'Unknown Activity',
+            'Activity': f'{event_id_text} - {get_event_description(event_id_text)}' if event_id_text else '',
             'Type': 'SecurityEvent',
-            'ManagementGroupName': 'AOI-Unknown',
-            'SourceComputerId': '{00000000-0000-0000-0000-000000000000}'
+            'ManagementGroupName': '',
+            'SourceComputerId': ''
         }
+
+        if task_text:
+            securityevent_compatible_data['TaskDisplayName'] = f'Task {task_text}'
+        if opcode:
+            securityevent_compatible_data['OpcodeDisplayName'] = f'Opcode {opcode}'
+        if keywords and '0x8020000000000000' in keywords:
+            securityevent_compatible_data['KeywordDisplayNames'] = 'Audit Success'
+        if correlation is not None:
+            activity_id = correlation.get('ActivityID', '')
+            if activity_id:
+                securityevent_compatible_data['ActivityId'] = activity_id.strip()
         
         # EventDataから実データに基づく詳細情報を抽出
         if event_data_elem is not None:
@@ -368,7 +360,7 @@ def parse_event_xml(xml_string):
             
             for data in data_elements:
                 name = data.get('Name')
-                value = data.text if data.text else ''
+                value = data.text.strip() if data.text else ''
                 
                 if not name:
                     continue
@@ -464,11 +456,14 @@ def parse_event_xml(xml_string):
                     target_field = field_mapping[name]
                     if target_field in securityevent_compatible_data:
                         clean_value = value.strip() if value else ''
-                        if target_field in ['LogonType', 'KeyLength']:
-                            try:
-                                securityevent_compatible_data[target_field] = int(clean_value) if clean_value.isdigit() else 0
-                            except ValueError:
-                                securityevent_compatible_data[target_field] = 0
+                        if target_field in ['LogonType', 'KeyLength', 'ErrorCode']:
+                            if clean_value:
+                                try:
+                                    securityevent_compatible_data[target_field] = int(clean_value, 0)
+                                except ValueError:
+                                    securityevent_compatible_data[target_field] = None
+                            else:
+                                securityevent_compatible_data[target_field] = None
                         else:
                             securityevent_compatible_data[target_field] = clean_value
         
@@ -503,10 +498,12 @@ def parse_event_xml(xml_string):
                 securityevent_compatible_data['AccountDomain'] = target_domain
         
         # LogonTypeNameの設定
-        logon_type = securityevent_compatible_data.get('LogonType', 0)
-        if isinstance(logon_type, int) and logon_type > 0:
+        logon_type = securityevent_compatible_data.get('LogonType')
+        if isinstance(logon_type, int):
             securityevent_compatible_data['LogonTypeName'] = get_logon_type_name(logon_type)
-        
+        else:
+            securityevent_compatible_data['LogonTypeName'] = ''
+
         return securityevent_compatible_data
         
     except Exception as e:

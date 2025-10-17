@@ -1,6 +1,6 @@
 {
   "properties": {
-    "description": "SecurityEvent テーブル互換 DCR スキーマ - 完全版",
+    "description": "SecurityEvent Built-in テーブル DCR スキーマ",
     "dataSources": {},
     "destinations": {
       "logAnalytics": [
@@ -18,8 +18,8 @@
         "destinations": [
           "SecurityEventsWorkspace"
         ],
-        "transformKql": "source",
-        "outputStream": "Custom-SecurityEvents_CL"
+    "transformKql": "source",
+    "outputStream": "Microsoft-SecurityEvent"
       }
     ],
     "streamDeclarations": {
@@ -91,7 +91,7 @@
           },
           {
             "name": "ProcessId",
-            "type": "int"
+            "type": "string"
           },
           {
             "name": "ThreadId",
@@ -138,10 +138,6 @@
             "type": "string"
           },
           {
-            "name": "LogonGuid",
-            "type": "string"
-          },
-          {
             "name": "TargetUserSid",
             "type": "string"
           },
@@ -155,10 +151,6 @@
           },
           {
             "name": "TargetLogonId",
-            "type": "string"
-          },
-          {
-            "name": "TargetLogonGuid",
             "type": "string"
           },
           {
@@ -287,7 +279,7 @@
           },
           {
             "name": "ErrorCode",
-            "type": "string"
+            "type": "int"
           },
           {
             "name": "TransmittedServices",
@@ -371,7 +363,7 @@
           },
           {
             "name": "EventRecordId",
-            "type": "long"
+            "type": "string"
           },
           {
             "name": "ActivityId",
@@ -395,10 +387,6 @@
           },
           {
             "name": "ManagementGroupName",
-            "type": "string"
-          },
-          {
-            "name": "SourceComputerId",
             "type": "string"
           }
         ]

@@ -1,12 +1,12 @@
 # EVTX to Log Analytics Workspace (LAWS) Azure Function
 
-このAzure FunctionsアプリケーションはBlob Storageに追加されたEVTXファイルを自動的に処理し、Azure Monitor Log Ingest APIを使用してMicrosoft SentinelのSecurityEvents_CLカスタムテーブルに送信します。
+このAzure FunctionsアプリケーションはBlob Storageに追加されたEVTXファイルを自動的に処理し、Azure Monitor Log Ingest APIを使用してMicrosoft Sentinelの組み込み SecurityEvent テーブルに送信します。
 
 ## ✅ プロジェクト完了状況
 
 **SecurityEventテーブル完全互換性を実現！**
-- ✅ SecurityEvents_CLカスタムテーブル作成完了（90フィールド）
-- ✅ SecurityEventテーブルと同等のスキーマ構成
+- ✅ SecurityEvent (組み込み) テーブルへ直接インジェスト
+- ✅ SecurityEventテーブルと同等のスキーマ構成（DCRのストリーム定義で実現）
 - ✅ DCR (Data Collection Rule) 設定完了
 - ✅ 完全なフィールドマッピング実装
 - ✅ テストデータ送信成功確認
@@ -15,7 +15,7 @@
 
 - **Blob Trigger**: 指定されたBlobコンテナにEVTXファイルが追加されると自動実行
 - **EVTX解析**: EVTXファイルをXMLとして解析し、SecurityEvent互換形式のJSONに変換
-- **Log Analytics送信**: Azure Monitor Log Ingest APIを使用してSecurityEvents_CLテーブルに送信
+- **Log Analytics送信**: Azure Monitor Log Ingest APIを使用してSecurityEventテーブルに送信
 - **完全互換性**: SecurityEventテーブルの90フィールドに対応した包括的データマッピング
 - **バッチ処理**: 大量のイベントを効率的に処理するため1000件ずつバッチ送信
 - **エラーハンドリング**: 適切なログ出力とエラー処理
@@ -112,7 +112,7 @@ SecurityEventテーブル用のDCRを作成します：
         "streams": ["Custom-SecurityEvent"],
         "destinations": ["evtx-workspace"],
         "transformKql": "source",
-        "outputStream": "Microsoft-SecurityEvent"
+  "outputStream": "Microsoft-SecurityEvent"
       }
     ]
   }
