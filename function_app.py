@@ -159,7 +159,6 @@ def get_event_description(event_id):
 def parse_event_xml(xml_string):
     """
     実際のEVTXファイル分析結果に基づく最適化されたイベントXML解析
-    実データで検出された42フィールドに対応
     """
     try:
         import xml.etree.ElementTree as ET

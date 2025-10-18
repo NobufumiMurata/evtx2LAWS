@@ -2,6 +2,12 @@
 
 このAzure FunctionsアプリケーションはBlob Storageに追加されたEVTXファイルを自動的に処理し、Azure Monitor Log Ingest APIを使用してMicrosoft Sentinelの組み込み SecurityEvent テーブルに送信します。
 
+## 重要な注意事項
+
+- 本READMEおよび実装コードはAIツール（GitHub Copilot）を用いて生成・整備されています。
+- 本コードは個人の検証目的で提供しており、企業・団体などの本番環境で利用する場合は利用者自身の責任で検証・運用してください。
+- Descriptionやイベントログフィールドのマッピングには不足や誤りが含まれる可能性があります。必要に応じて内容を精査・補完してください。
+
 ## ✅ プロジェクト完了状況
 
 **SecurityEventテーブル完全互換性を実現！**
@@ -44,104 +50,106 @@ requests
 - `STREAM_NAME`: データストリーム名 (デフォルト: `Custom-SecurityEvent`)
 
 ### Azure Functions設定
-- `AzureWebJobsStorage`: Azure Storage接続文字列
+- `AzureWebJobsStorage`: Azure Storage接続文字列（Blob Triggerおよび内部状態の保持に利用）
 - `FUNCTIONS_WORKER_RUNTIME`: `python`
-- `d0e84d_STORAGE`: Blob Trigger用のストレージ接続文字列
 
 ## Azure リソースの準備
 
-### 1. Data Collection Endpoint (DCE)
-```bash
-az monitor data-collection endpoint create \\
-  --name "evtx-dce" \\
-  --resource-group "your-rg" \\
-  --location "japaneast" \\
-  --network-acls-public-network-access "Enabled"
+`create-azure-resources.ps1` を使用すると、SecurityEvent テーブルへ直接送信するための Data Collection Endpoint (DCE) と Data Collection Rule (DCR) を一括で構成できます。手動で個別の `az` コマンドを実行する必要はありません。
+
+### スクリプト概要
+- DCE と DCR を作成または再利用し、両者を自動で関連付け
+- `dcr-schema-securityevent.json` を基に SecurityEvent 互換の 90+ フィールド構成を適用
+- DCR Immutable ID と DCE Endpoint を出力し、Azure Functions の環境変数設定をガイド
+- 冪等性を考慮しており、再実行しても既存リソースを破壊しません
+
+### 実行前の前提条件
+- Azure CLI がインストールされており、`az login` 済み（必要に応じてサービスプリンシパル指定可）
+- 指定するサブスクリプション、リソースグループ、Log Analytics Workspace が既に存在
+- PowerShell (pwsh) でスクリプトを実行可能
+
+### 実行例
+```pwsh
+pwsh ./create-azure-resources.ps1 `
+  -SubscriptionId "00000000-0000-0000-0000-000000000000" `
+  -ResourceGroup "rg-evtx" `
+  -WorkspaceName "laws-evtx" `
+  -Location "japaneast"
 ```
 
-### 2. Data Collection Rule (DCR)
-SecurityEventテーブル用のDCRを作成します：
+任意で以下のパラメーターを指定できます：
+- `-DcrName` / `-DceName`: 既定以外の名前を使用したい場合
+- `-DcrFilePath`: カスタム DCR JSON を利用したい場合
+- `-ServicePrincipalAppId` `-ServicePrincipalSecret` `-ServicePrincipalTenantId`: サービスプリンシパルでのログインをスクリプト内で完結させる場合に指定
 
-```json
-{
-  "location": "japaneast",
-  "properties": {
-    "dataCollectionEndpointId": "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/Microsoft.Insights/dataCollectionEndpoints/{dce-name}",
-    "streamDeclarations": {
-      "Custom-SecurityEvent": {
-        "columns": [
-          {"name": "TimeGenerated", "type": "datetime"},
-          {"name": "EventID", "type": "int"},
-          {"name": "EventLevel", "type": "int"},
-          {"name": "EventRecordID", "type": "long"},
-          {"name": "EventSourceName", "type": "string"},
-          {"name": "Computer", "type": "string"},
-          {"name": "Account", "type": "string"},
-          {"name": "AccountType", "type": "string"},
-          {"name": "Activity", "type": "string"},
-          {"name": "ProcessName", "type": "string"},
-          {"name": "ProcessID", "type": "int"},
-          {"name": "SubjectUserName", "type": "string"},
-          {"name": "SubjectDomainName", "type": "string"},
-          {"name": "SubjectUserSid", "type": "string"},
-          {"name": "TargetUserName", "type": "string"},
-          {"name": "TargetDomainName", "type": "string"},
-          {"name": "TargetUserSid", "type": "string"},
-          {"name": "LogonType", "type": "int"},
-          {"name": "LogonTypeName", "type": "string"},
-          {"name": "AuthenticationPackageName", "type": "string"},
-          {"name": "WorkstationName", "type": "string"},
-          {"name": "IpAddress", "type": "string"},
-          {"name": "IpPort", "type": "string"},
-          {"name": "Status", "type": "string"},
-          {"name": "SubStatus", "type": "string"},
-          {"name": "FailureReason", "type": "string"}
-        ]
-      }
-    },
-    "destinations": {
-      "logAnalytics": [
-        {
-          "workspaceResourceId": "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/{workspace-name}",
-          "name": "evtx-workspace"
-        }
-      ]
-    },
-    "dataFlows": [
-      {
-        "streams": ["Custom-SecurityEvent"],
-        "destinations": ["evtx-workspace"],
-        "transformKql": "source",
-  "outputStream": "Microsoft-SecurityEvent"
-      }
-    ]
-  }
-}
-```
+### スクリプト実行後
+- コンソールに表示される `DCR Immutable ID` と `DCE Endpoint` を `local.settings.json` などの `DCR_IMMUTABLE_ID` / `DCE_ENDPOINT` として設定
+- 出力メッセージに従い、必要なロール割り当て（Monitoring Metrics Publisher、Log Analytics Contributor）を付与
+- Log Analytics で `SecurityEvent | take 5` などのクエリを実行して取り込み結果を確認
 
-### 3. 認証設定
-Azure Functionsのマネージドアイデンティティを有効にし、以下の権限を付与：
-- DCRに対する「Monitoring Metrics Publisher」ロール
-- Log Analytics Workspaceに対する「Log Analytics Contributor」ロール
+詳細な手順やロール設定のコマンドは `create-azure-resources.ps1` 内のコメントにも記載されています。
 
-#### ローカル開発環境での認証方法
+## 認証とロール設定
+
+Azure Functions から Log Ingest API を実行するには、**サービスプリンシパル**または**マネージドアイデンティティ**に適切な Azure ロールを付与する必要があります。
+
+### 必要なロール
+
+1. **Monitoring Metrics Publisher** (DCR に対して)
+   - Data Collection Rule へのデータ送信に必須
+   - スコープ: 作成した DCR リソース
+
+2. **Log Analytics Contributor** (Log Analytics Workspace に対して・オプション)
+   - ワークスペースのテーブル操作やクエリ実行が必要な場合に付与
+   - スコープ: Log Analytics Workspace リソース
+
+### ローカル開発環境での認証
 
 **方法1: サービスプリンシパル認証（推奨）**
-```json
-{
-  "AZURE_CLIENT_ID": "your-service-principal-client-id",
-  "AZURE_CLIENT_SECRET": "your-service-principal-client-secret", 
-  "AZURE_TENANT_ID": "your-tenant-id"
-}
-```
+
+1. サービスプリンシパルを作成:
+   ```bash
+   az ad sp create-for-rbac --name "evtx-function-sp" --role "Monitoring Metrics Publisher" --scopes "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/microsoft.insights/datacollectionrules/{dcr-name}"
+   ```
+
+2. 出力された `appId`, `password`, `tenant` を `local.settings.json` に設定:
+   ```json
+   {
+     "Values": {
+       "AZURE_CLIENT_ID": "your-service-principal-app-id",
+       "AZURE_CLIENT_SECRET": "your-service-principal-password",
+       "AZURE_TENANT_ID": "your-tenant-id",
+       ...
+     }
+   }
+   ```
 
 **方法2: Azure CLI認証**
 ```bash
 az login
 ```
+- ローカル開発時は Azure CLI の認証情報を `DefaultAzureCredential` が自動的に利用
+- ただし、CLI ユーザーにも同様のロール割り当てが必要
 
-**方法3: 環境変数による認証**
-- `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` を設定
+### Azure 環境（本番）での認証
+
+**マネージドアイデンティティの使用（推奨）**
+
+1. Azure Functions でシステム割り当てマネージドアイデンティティを有効化:
+   ```bash
+   az functionapp identity assign --name {function-app-name} --resource-group {rg}
+   ```
+
+2. マネージドアイデンティティに必要なロールを付与:
+   ```bash
+   # Monitoring Metrics Publisher ロールを DCR に付与
+   az role assignment create \
+     --assignee {managed-identity-principal-id} \
+     --role "Monitoring Metrics Publisher" \
+     --scope "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/microsoft.insights/datacollectionrules/{dcr-name}"
+   ```
+
+3. Azure Functions の環境変数には認証情報を設定不要（マネージドアイデンティティが自動的に使用される）
 
 詳細な設定手順は [SERVICE_PRINCIPAL_SETUP.md](./SERVICE_PRINCIPAL_SETUP.md) を参照してください。
 
@@ -164,9 +172,8 @@ pip install -r requirements.txt
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "python",
-    "d0e84d_STORAGE": "UseDevelopmentStorage=true",
+  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+  "FUNCTIONS_WORKER_RUNTIME": "python",
     "DCE_ENDPOINT": "https://your-dce-endpoint.monitor.azure.com",
     "DCR_IMMUTABLE_ID": "your-dcr-immutable-id",
     "STREAM_NAME": "Custom-SecurityEvent"
@@ -178,6 +185,92 @@ pip install -r requirements.txt
 ```bash
 azurite --silent --location ./azurite --debug ./azurite/debug.log
 ```
+
+### 5. ローカルでの関数実行
+```bash
+func start
+```
+
+## Azure Functions へのデプロイ
+
+### 前提条件
+- Azure Functions アプリが作成済み（Python 3.9 以降、Linux または Windows）
+- Azure CLI と Azure Functions Core Tools がインストール済み
+
+### デプロイ手順
+
+#### 1. Function App の作成（未作成の場合）
+```bash
+# ストレージアカウント作成
+az storage account create \
+  --name {storage-account-name} \
+  --resource-group {rg} \
+  --location {location} \
+  --sku Standard_LRS
+
+# Function App 作成 (Linux + Python 3.11)
+az functionapp create \
+  --name {function-app-name} \
+  --resource-group {rg} \
+  --storage-account {storage-account-name} \
+  --runtime python \
+  --runtime-version 3.11 \
+  --os-type Linux \
+  --functions-version 4
+```
+
+#### 2. マネージドアイデンティティの有効化と権限付与
+```bash
+# システム割り当てマネージドアイデンティティを有効化
+az functionapp identity assign \
+  --name {function-app-name} \
+  --resource-group {rg}
+
+# 出力された principalId をメモ
+PRINCIPAL_ID=$(az functionapp identity show --name {function-app-name} --resource-group {rg} --query principalId -o tsv)
+
+# DCR への Monitoring Metrics Publisher ロール付与
+az role assignment create \
+  --assignee $PRINCIPAL_ID \
+  --role "Monitoring Metrics Publisher" \
+  --scope "/subscriptions/{subscription-id}/resourceGroups/{rg}/providers/microsoft.insights/datacollectionrules/{dcr-name}"
+```
+
+#### 3. 環境変数の設定
+```bash
+az functionapp config appsettings set \
+  --name {function-app-name} \
+  --resource-group {rg} \
+  --settings \
+    DCE_ENDPOINT="https://your-dce-endpoint.monitor.azure.com" \
+    DCR_IMMUTABLE_ID="dcr-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+    STREAM_NAME="Custom-SecurityEvent"
+```
+
+#### 4. アプリケーションのデプロイ
+```bash
+# プロジェクトルートから実行
+func azure functionapp publish {function-app-name}
+```
+
+#### 5. デプロイ確認
+```bash
+# 関数一覧の確認
+az functionapp function list --name {function-app-name} --resource-group {rg}
+
+# ログストリーミングで動作確認
+func azure functionapp logstream {function-app-name}
+```
+
+### デプロイ後の確認
+1. Azure Portal で Function App のログを確認
+2. Blob Storage の `mycontainer` に EVTX ファイルをアップロードしてトリガーをテスト
+3. Log Analytics Workspace で `SecurityEvent` テーブルにデータが取り込まれているか確認:
+   ```kql
+   SecurityEvent
+   | where TimeGenerated > ago(1h)
+   | take 10
+   ```
 
 ## 使用方法
 
@@ -206,7 +299,6 @@ Successfully processed 150 events from sample.evtx
    - `pip install -r requirements.txt` を再実行
 
 2. **認証エラー**
-   - マネージドアイデンティティが有効になっているか確認
    - DCRとワークスペースへの適切な権限が付与されているか確認
 
 3. **EVTXファイル処理エラー**
@@ -235,7 +327,6 @@ python test_function.py
 
 ## セキュリティ考慮事項
 
-- マネージドアイデンティティを使用して安全な認証を実装
 - 最小権限の原則に従ったRBACロール設定
 - 機密データを含むログファイルの適切な処理
 
