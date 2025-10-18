@@ -6,3 +6,8 @@ __queuestorage__
 local.settings.json
 test
 .venv
+archive
+sample_evtx
+*.ps1
+dcr*.json
+README.md
